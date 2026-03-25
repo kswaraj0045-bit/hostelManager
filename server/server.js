@@ -80,6 +80,10 @@ app.use(cors(corsOptions));
 app.use(express.json());
 app.use('/uploads', express.static('uploads'));
 
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', message: 'Server is running' })
+})
+
 app.use('/api/auth', authRoutes);
 app.use('/api/groups', groupRoutes);
 app.use('/api/expenses', expenseRoutes);

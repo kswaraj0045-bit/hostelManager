@@ -2,7 +2,7 @@ import cron from 'node-cron'
 import Reminder from '../models/Reminder.js'
 import Chore from '../models/Chore.js'
 import User from '../models/User.js'
-import { sendEmail, emailTemplate } from '../utils/sendEmail.js'
+import { sendEmail } from '../utils/sendEmail.js' 
 import { sendPushNotification } from '../utils/pushNotification.js'
 
 export const startReminderJob = () => {

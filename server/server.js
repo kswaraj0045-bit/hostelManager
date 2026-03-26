@@ -32,91 +32,65 @@ connectDB();
 const app = express();
 const httpServer = createServer(app);
 
-const configuredClientOrigins = [
-  process.env.CLIENT_URL,
-  'http://localhost:5173',
-  'http://127.0.0.1:5173'
-].filter(Boolean);
-
-const isPrivateDevHost = (hostname) => {
-  return (
-    hostname === 'localhost' ||
-    hostname === '127.0.0.1' ||
-    hostname === '::1' ||
-    /^10\./.test(hostname) ||
-    /^192\.168\./.test(hostname) ||
-    /^172\.(1[6-9]|2\d|3[0-1])\./.test(hostname)
-  );
-};
-
-const isAllowedOrigin = (origin) => {
-  if (!origin || configuredClientOrigins.includes(origin)) return true;
-  if (process.env.NODE_ENV === 'production') return false;
-
-  try {
-    const { protocol, hostname } = new URL(origin);
-    return (protocol === 'http:' || protocol === 'https:') && isPrivateDevHost(hostname);
-  } catch {
-    return false;
-  }
-};
-
 const corsOptions = {
-  origin(origin, callback) {
-    if (isAllowedOrigin(origin)) return callback(null, true);
-    return callback(new Error(`Origin ${origin} is not allowed by CORS`));
-  }
-};
+  origin: [
+    process.env.CLIENT_URL,
+    'https://hostel-manager-five.vercel.app',
+    'https://hostel-manager-b6n3zwq5p-kswaraj0045-bits-projects.vercel.app',
+    'http://localhost:5173',
+    'http://localhost:5174'
+  ],
+  credentials: true
+}
 
 const io = new Server(httpServer, {
   cors: corsOptions
-});
-app.set('io', io);
+})
+app.set('io', io)
 
-const { emitToGroup } = setupSocket(io);
-setSocketEmitter(emitToGroup);
+const { emitToGroup } = setupSocket(io)
+setSocketEmitter(emitToGroup)
 
-app.use(cors(corsOptions));
-app.use(express.json());
-app.use('/uploads', express.static('uploads'));
+app.use(cors(corsOptions))
+app.use(express.json())
+app.use('/uploads', express.static('uploads'))
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'Server is running' })
 })
 
-app.use('/api/auth', authRoutes);
-app.use('/api/groups', groupRoutes);
-app.use('/api/expenses', expenseRoutes);
-app.use('/api/settlements', settlementRoutes);
-app.get('/api/history', protect, getPaymentHistory);
-app.use('/api/chores', choreRoutes);
-app.use('/api/mess', messRoutes);
-app.use('/api/bills', billRoutes);
-app.use('/api/ai', aiRoutes);
-app.use('/api/reminders', reminderRoutes);
-app.use('/api/chat', chatRoutes);
-app.use('/api/shopping', shoppingRoutes);
-app.use('/api/analytics', analyticsRoutes);
+app.use('/api/auth', authRoutes)
+app.use('/api/groups', groupRoutes)
+app.use('/api/expenses', expenseRoutes)
+app.use('/api/settlements', settlementRoutes)
+app.get('/api/history', protect, getPaymentHistory)
+app.use('/api/chores', choreRoutes)
+app.use('/api/mess', messRoutes)
+app.use('/api/bills', billRoutes)
+app.use('/api/ai', aiRoutes)
+app.use('/api/reminders', reminderRoutes)
+app.use('/api/chat', chatRoutes)
+app.use('/api/shopping', shoppingRoutes)
+app.use('/api/analytics', analyticsRoutes)
 
-// Push subscription routes
 app.post('/api/push/subscribe', protect, async (req, res) => {
   try {
-    const { subscription } = req.body;
-    await User.findByIdAndUpdate(req.user._id, { pushSubscription: subscription });
-    res.json({ success: true, data: { message: 'Subscription saved' } });
+    const { subscription } = req.body
+    await User.findByIdAndUpdate(req.user._id, { pushSubscription: subscription })
+    res.json({ success: true, data: { message: 'Subscription saved' } })
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({ success: false, message: err.message })
   }
-});
+})
 
 app.get('/api/push/vapid-public-key', (req, res) => {
-  res.json({ success: true, data: process.env.VAPID_PUBLIC_KEY || '' });
-});
+  res.json({ success: true, data: process.env.VAPID_PUBLIC_KEY || '' })
+})
 
-app.use(errorHandler);
+app.use(errorHandler)
 
-startReminderJob();
-startDigestJob();
+startReminderJob()
+startDigestJob()
 
-const PORT = process.env.PORT || 5000;
-httpServer.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+const PORT = process.env.PORT || 5000
+httpServer.listen(PORT, () => console.log(`Server running on port ${PORT}`))

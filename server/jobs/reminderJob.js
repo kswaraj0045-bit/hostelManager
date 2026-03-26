@@ -1,12 +1,22 @@
 import cron from 'node-cron'
 import Reminder from '../models/Reminder.js'
 import Chore from '../models/Chore.js'
-import User from '../models/User.js'
-import { sendEmail } from '../utils/sendEmail.js' 
+import { sendEmail } from '../utils/sendEmail.js'
 import { sendPushNotification } from '../utils/pushNotification.js'
 
+const reminderEmailHtml = (content) => `
+  <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#0F0E17;padding:20px;border-radius:12px">
+    <div style="background:linear-gradient(135deg,#6C63FF,#FF6584);padding:24px;border-radius:12px;text-align:center;margin-bottom:20px">
+      <h1 style="color:white;margin:0;font-size:24px">🏠 HostelLife</h1>
+    </div>
+    <div style="background:#1C1B29;padding:24px;border-radius:12px;color:#FFFFFE">
+      ${content}
+    </div>
+    <p style="text-align:center;color:#A7A9BE;font-size:12px;margin-top:16px">HostelLife — Manage hostel life smarter</p>
+  </div>
+`
+
 export const startReminderJob = () => {
-  // Job 1: every minute — fire reminders due within next 5 minutes
   cron.schedule('* * * * *', async () => {
     try {
       const now = new Date()
@@ -24,7 +34,6 @@ export const startReminderJob = () => {
       for (const reminder of reminders) {
         const user = reminder.user_id
 
-        // Send push notification
         if (reminder.channels?.push && user?.pushSubscription) {
           sendPushNotification(user.pushSubscription, {
             title: reminder.title,
@@ -33,20 +42,18 @@ export const startReminderJob = () => {
           }).catch(console.error)
         }
 
-        // Send email
         if (reminder.channels?.email && user?.email) {
           sendEmail({
             to: user.email,
             subject: `⏰ Reminder: ${reminder.title}`,
-            html: emailTemplate(`
+            html: reminderEmailHtml(`
               <h2 style="color:#6C63FF;margin-bottom:12px">⏰ ${reminder.title}</h2>
-              <p>${reminder.description || 'You have a scheduled reminder.'}</p>
+              <p style="color:#A7A9BE">${reminder.description || 'You have a scheduled reminder.'}</p>
               <p style="color:#A7A9BE;font-size:12px;margin-top:16px">Scheduled for: ${new Date(reminder.remind_at).toLocaleString()}</p>
             `)
           }).catch(console.error)
         }
 
-        // Handle repeat or complete
         if (reminder.repeat === 'none') {
           await Reminder.findByIdAndUpdate(reminder._id, { isCompleted: true })
         } else if (reminder.repeat === 'daily') {
@@ -68,7 +75,6 @@ export const startReminderJob = () => {
     }
   })
 
-  // Job 2: every day at 8am — send chore reminders
   cron.schedule('0 8 * * *', async () => {
     try {
       const today = new Date()
@@ -88,15 +94,13 @@ export const startReminderJob = () => {
             sendEmail({
               to: chore.assigned_to.email,
               subject: `Chore reminder: ${chore.title}`,
-              html: emailTemplate(`
+              html: reminderEmailHtml(`
                 <h2 style="color:#6C63FF;margin-bottom:12px">🧹 Chore Reminder</h2>
-                <p>Hi <strong>${chore.assigned_to.name}</strong>,</p>
-                <p>your chore today is: <strong>${chore.title}</strong>. Don't forget!</p>
+                <p style="color:#FFFFFE">Hi <strong>${chore.assigned_to.name}</strong>,</p>
+                <p style="color:#A7A9BE">Your chore today is: <strong style="color:#6C63FF">${chore.title}</strong>. Don't forget!</p>
               `)
             }).catch(console.error)
           }
-        } else {
-          console.log(`Reminder: Chore "${chore.title}" is due today (unassigned)`)
         }
       }
     } catch (err) {

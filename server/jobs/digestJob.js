@@ -7,7 +7,21 @@ import Group from '../models/Group.js'
 import Digest from '../models/Digest.js'
 import User from '../models/User.js'
 import { askGemini } from '../config/gemini.js'
-import { sendEmail, emailTemplate } from '../utils/sendEmail.js'
+import { sendEmail } from '../utils/sendEmail.js'
+
+const digestEmailHtml = (name, content) => `
+  <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#0F0E17;padding:20px;border-radius:12px">
+    <div style="background:linear-gradient(135deg,#6C63FF,#FF6584);padding:24px;border-radius:12px;text-align:center;margin-bottom:20px">
+      <h1 style="color:white;margin:0;font-size:24px">🏠 HostelLife</h1>
+    </div>
+    <div style="background:#1C1B29;padding:24px;border-radius:12px;color:#FFFFFE">
+      <h2 style="color:#6C63FF;margin-bottom:12px">📊 Weekly Digest</h2>
+      <p>Hi <strong>${name}</strong>, here's your weekly summary:</p>
+      <div style="margin-top:16px;white-space:pre-line;color:#A7A9BE;line-height:1.6">${content}</div>
+    </div>
+    <p style="text-align:center;color:#A7A9BE;font-size:12px;margin-top:16px">HostelLife — Manage hostel life smarter</p>
+  </div>
+`
 
 const getWeekStart = (date) => {
   const d = new Date(date)
@@ -53,7 +67,7 @@ export const startDigestJob = () => {
           unpaidBills: bills.map(b => ({ title: b.title, amount: b.amount, group: b.group_id?.name }))
         }
 
-        const prompt = `Generate a friendly weekly summary for a hostel student. Include total spent, who owes what, completed chores, upcoming bills. Keep it under 150 words. Data: ${JSON.stringify(weekData)}`
+        const prompt = `Generate a friendly weekly summary for a hostel student. Include total spent, pending chores, upcoming bills. Keep it under 150 words. Data: ${JSON.stringify(weekData)}`
         const content = await askGemini(prompt, JSON.stringify(weekData))
 
         await Digest.create({
@@ -63,17 +77,12 @@ export const startDigestJob = () => {
           week_end: weekEnd
         })
 
-        // Send email if user has email notifications enabled
         const user = await User.findById(userId).select('email name emailNotifications')
         if (user?.email && user?.emailNotifications?.reminders !== false) {
           sendEmail({
             to: user.email,
             subject: '🏠 Your Weekly HostelLife Digest',
-            html: emailTemplate(`
-              <h2 style="color:#6C63FF;margin-bottom:12px">📊 Weekly Digest</h2>
-              <p>Hi <strong>${user.name}</strong>, here's your weekly summary:</p>
-              <div style="margin-top:16px;white-space:pre-line">${content}</div>
-            `)
+            html: digestEmailHtml(user.name, content)
           }).catch(console.error)
         }
       } catch (err) {

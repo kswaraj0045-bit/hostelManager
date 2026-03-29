@@ -3,6 +3,7 @@ import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
+import https from 'https';
 import connectDB from './config/db.js';
 import { errorHandler } from './middleware/errorMiddleware.js';
 import { setupSocket } from './socket/socketHandler.js';
@@ -93,4 +94,18 @@ startReminderJob()
 startDigestJob()
 
 const PORT = process.env.PORT || 5000
-httpServer.listen(PORT, () => console.log(`Server running on port ${PORT}`))
+httpServer.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`)
+
+  const keepAlive = () => {
+    const url = process.env.RENDER_URL || 'https://hostelmanager-nlty.onrender.com'
+    https.get(`${url}/api/health`, (res) => {
+      console.log(`Keep alive ping: ${res.statusCode}`)
+    }).on('error', (err) => {
+      console.error('Keep alive error:', err.message)
+    })
+  }
+
+  setInterval(keepAlive, 14 * 60 * 1000)
+  console.log('Keep alive ping started (every 14 minutes)')
+})

@@ -1,4 +1,4 @@
-import { Resend } from "resend";
+import { Resend } from 'resend'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
@@ -61,10 +61,3 @@ export const sendPasswordResetEmail = async ({ to, name, resetToken }) => {
     `
   })
 }
-```
-
----
-
-## Step 4 — Add to Render Environment Variables
-```
-RESEND_API_KEY = re_8NVGYo11_2mAffNfz4kb4HjJsgJNjrMA7

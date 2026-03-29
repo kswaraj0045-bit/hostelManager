@@ -1,20 +1,28 @@
 import nodemailer from 'nodemailer'
 
-const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 465,
-  secure: true,
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS
-  }
-})
+const createTransporter = () => {
+  return nodemailer.createTransport({
+    host: 'smtp.gmail.com',
+    port: 465,
+    secure: true,
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS
+    },
+    tls: {
+      rejectUnauthorized: false
+    }
+  })
+}
 
 export const sendEmail = async ({ to, subject, html }) => {
+  const transporter = createTransporter()
   try {
     await transporter.sendMail({
       from: `"HostelLife" <${process.env.EMAIL_USER}>`,
-      to, subject, html
+      to,
+      subject,
+      html
     })
     console.log('Email sent to:', to)
   } catch (err) {
@@ -27,14 +35,14 @@ export const sendOTPEmail = async ({ to, otp, name }) => {
   await sendEmail({
     to,
     subject: 'HostelLife — Verify Your Email',
-    html: `<div style="font-family:Arial,sans-serif;padding:20px;background:#f9f9f9">
+    html: `<div style="font-family:Arial,sans-serif;padding:20px">
       <div style="background:linear-gradient(135deg,#6C63FF,#FF6584);padding:20px;border-radius:12px;text-align:center;margin-bottom:20px">
         <h1 style="color:white;margin:0">🏠 HostelLife</h1>
       </div>
       <h2 style="color:#6C63FF">Hi ${name}! 👋</h2>
       <p>Your verification OTP is:</p>
       <h1 style="letter-spacing:8px;color:#6C63FF;background:#f0f0f0;padding:16px;border-radius:8px;text-align:center">${otp}</h1>
-      <p style="color:#666;font-size:13px">Expires in 10 minutes. Do not share with anyone.</p>
+      <p style="color:#666;font-size:13px">Expires in 10 minutes.</p>
     </div>`
   })
 }
@@ -44,7 +52,7 @@ export const sendPasswordResetEmail = async ({ to, name, resetToken }) => {
   await sendEmail({
     to,
     subject: 'HostelLife — Reset Your Password',
-    html: `<div style="font-family:Arial,sans-serif;padding:20px;background:#f9f9f9">
+    html: `<div style="font-family:Arial,sans-serif;padding:20px">
       <div style="background:linear-gradient(135deg,#6C63FF,#FF6584);padding:20px;border-radius:12px;text-align:center;margin-bottom:20px">
         <h1 style="color:white;margin:0">🏠 HostelLife</h1>
       </div>

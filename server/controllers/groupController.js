@@ -74,6 +74,30 @@ export const joinGroup = async (req, res, next) => {
   }
 };
 
+export const removeMember = async (req, res, next) => {
+  try {
+    const { groupId, userId } = req.params;
+    const group = await Group.findById(groupId);
+    if (!group) return res.status(404).json({ success: false, message: 'Group not found' });
+
+    const isAdmin = group.created_by.toString() === req.user._id.toString();
+    if (!isAdmin) {
+      return res.status(403).json({ success: false, message: 'Only admin can remove members' });
+    }
+
+    if (userId === req.user._id.toString()) {
+      return res.status(400).json({ success: false, message: 'Admin cannot remove themselves' });
+    }
+
+    group.members = group.members.filter((member) => member.user.toString() !== userId);
+    await group.save();
+
+    res.json({ success: true, message: 'Member removed successfully' });
+  } catch (err) {
+    next(err);
+  }
+};
+
 export const deleteGroup = async (req, res, next) => {
   try {
     const group = await Group.findById(req.params.id);

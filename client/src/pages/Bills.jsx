@@ -1,6 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Plus, CalendarDays, ChevronDown, ChevronUp } from 'lucide-react';
-import BillList from '../components/bills/BillList.jsx';
 import BillForm from '../components/bills/BillForm.jsx';
 import Modal from '../components/common/Modal.jsx';
 import Loader from '../components/common/Loader.jsx';
@@ -10,11 +9,11 @@ import { useToast } from '../hooks/useToast.js';
 import { useAuth } from '../context/AuthContext.jsx';
 
 function getBillIcon(title = '') {
-  const t = title.toLowerCase();
-  if (t.includes('electric') || t.includes('power') || t.includes('bill')) return { emoji: '⚡', color: '#FF8906' };
-  if (t.includes('water') || t.includes('aqua')) return { emoji: '💧', color: '#0984E3' };
-  if (t.includes('internet') || t.includes('wifi') || t.includes('network')) return { emoji: '📶', color: '#6C63FF' };
-  if (t.includes('rent') || t.includes('house')) return { emoji: '🏠', color: '#2CB67D' };
+  const value = title.toLowerCase();
+  if (value.includes('electric') || value.includes('power') || value.includes('bill')) return { emoji: '⚡', color: '#FF8906' };
+  if (value.includes('water') || value.includes('aqua')) return { emoji: '💧', color: '#0984E3' };
+  if (value.includes('internet') || value.includes('wifi') || value.includes('network')) return { emoji: '📶', color: '#6C63FF' };
+  if (value.includes('rent') || value.includes('house')) return { emoji: '🏠', color: '#2CB67D' };
   return { emoji: '📋', color: '#A7A9BE' };
 }
 
@@ -32,6 +31,8 @@ function DueBadge({ days, paid }) {
   return <span style={{ background: 'rgba(167,169,190,0.1)', color: '#A7A9BE', fontSize: '11px', padding: '3px 10px', borderRadius: '20px', fontWeight: 600 }}>{days}d left</span>;
 }
 
+const getAdminId = (group) => group?.created_by?._id?.toString?.() || group?.created_by?.toString?.() || '';
+
 export default function Bills() {
   const [groups, setGroups] = useState([]);
   const [selectedGroup, setSelectedGroup] = useState('');
@@ -39,70 +40,131 @@ export default function Bills() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [showPaid, setShowPaid] = useState(false);
+  const [formSubmitting, setFormSubmitting] = useState(false);
+  const [actionLoading, setActionLoading] = useState({});
   const { success, error } = useToast();
   const { user } = useAuth();
-  const currentUserId = user?._id?.toString?.() || user?._id;
 
-  const group = groups.find(g => g._id === selectedGroup);
+  const currentUserId = user?._id?.toString?.() || user?._id || '';
+  const group = groups.find((item) => item._id === selectedGroup);
+  const isAdmin = getAdminId(group) === currentUserId;
+
+  const setActionState = (key, value) => {
+    setActionLoading((current) => ({ ...current, [key]: value }));
+  };
+
+  const loadBills = async (groupId) => {
+    if (!groupId) {
+      setBills([]);
+      return;
+    }
+
+    try {
+      const res = await billService.getBills(groupId);
+      setBills(res.data?.data || []);
+    } catch (err) {
+      setBills([]);
+      error(err.response?.data?.message || 'Failed to load bills');
+    }
+  };
 
   useEffect(() => {
-    groupService.getGroups().then(res => {
-      const list = res.data?.data || [];
-      setGroups(list);
-      if (list.length && !selectedGroup) setSelectedGroup(list[0]._id);
-    }).finally(() => setLoading(false));
+    const loadGroups = async () => {
+      try {
+        const res = await groupService.getGroups();
+        const list = res.data?.data || [];
+        setGroups(list);
+        if (list.length) {
+          setSelectedGroup((current) => current || list[0]._id);
+        }
+      } catch (err) {
+        error(err.response?.data?.message || 'Failed to load groups');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadGroups();
   }, []);
 
   useEffect(() => {
     if (!selectedGroup) return;
-    billService.getBills(selectedGroup).then(res => { setBills(res.data?.data || []); });
+    loadBills(selectedGroup);
   }, [selectedGroup]);
 
-  const reload = () => billService.getBills(selectedGroup).then(res => setBills(res.data?.data || []));
-
   const handleAdd = async (data) => {
+    setFormSubmitting(true);
     try {
       await billService.addBill(data);
       success('Bill added');
       setShowForm(false);
-      reload();
+      await loadBills(selectedGroup);
     } catch (err) {
       error(err.response?.data?.message || 'Failed to add');
-      throw err;
+    } finally {
+      setFormSubmitting(false);
     }
   };
 
-  const handleMarkPaid = async (id) => {
+  const handleMarkPaid = async (bill) => {
+    const actionKey = `pay-${bill._id}`;
+    setActionState(actionKey, true);
+
     try {
-      await billService.updateBill(id, { paid: true });
-      success('Bill marked paid');
-      reload();
+      const res = await billService.updateBill(bill._id, { paid: true });
+      const updated = res.data?.data;
+      success(updated?.paymentRequested ? 'Payment request sent' : 'Bill marked paid');
+      await loadBills(selectedGroup);
     } catch (err) {
       error(err.response?.data?.message || 'Failed to update');
+    } finally {
+      setActionState(actionKey, false);
     }
   };
 
-  const handleDelete = async (id) => {
+  const handleApprove = async (bill) => {
+    const actionKey = `approve-${bill._id}`;
+    setActionState(actionKey, true);
+
     try {
-      await billService.deleteBill(id);
-      success('Bill deleted');
-      reload();
+      await billService.approveBillPayment(bill._id);
+      success('Payment approved');
+      await loadBills(selectedGroup);
     } catch (err) {
-      error(err.response?.data?.message || 'Failed to delete');
+      error(err.response?.data?.message || 'Failed to approve');
+    } finally {
+      setActionState(actionKey, false);
+    }
+  };
+
+  const handleReject = async (bill) => {
+    const actionKey = `reject-${bill._id}`;
+    setActionState(actionKey, true);
+
+    try {
+      await billService.rejectBillPayment(bill._id);
+      success('Payment request rejected');
+      await loadBills(selectedGroup);
+    } catch (err) {
+      error(err.response?.data?.message || 'Failed to reject');
+    } finally {
+      setActionState(actionKey, false);
     }
   };
 
   if (loading) return <Loader />;
 
-  const unpaid = bills.filter(b => !b.paid);
-  const paid = bills.filter(b => b.paid);
+  const unpaid = bills.filter((bill) => !bill.paid);
+  const paid = bills.filter((bill) => bill.paid);
+  const paymentRequests = bills.filter((bill) => !bill.paid && bill.paymentRequested);
 
   const BillCard = ({ bill, dimmed = false }) => {
     const { emoji, color } = getBillIcon(bill.title);
     const days = daysUntil(bill.due_date);
     const assignedUserId = bill.assigned_to?._id?.toString?.() || bill.assigned_to?.toString?.() || '';
     const isAssignedUser = assignedUserId && assignedUserId === currentUserId;
-    const canMarkPaid = !bill.paid && (!assignedUserId || isAssignedUser);
+    const canRequestPayment = !bill.paid && !bill.paymentRequested && (!assignedUserId || isAssignedUser);
+    const actionKey = `pay-${bill._id}`;
     const assignedLabel = assignedUserId
       ? (isAssignedUser ? 'You will pay this bill' : `${bill.assigned_to?.name || 'Another member'} will pay this bill`)
       : 'No payer assigned yet';
@@ -121,6 +183,7 @@ export default function Bills() {
             <p style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: '22px', color: '#FFFFFE' }}>₹{bill.amount}</p>
           </div>
         </div>
+
         {bill.due_date && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -130,29 +193,57 @@ export default function Bills() {
             <DueBadge days={days} paid={bill.paid} />
           </div>
         )}
+
         <p style={{ fontSize: '13px', color: bill.paid ? '#2CB67D' : '#A7A9BE', marginBottom: '12px' }}>
           {bill.paid ? paidLabel : assignedLabel}
         </p>
-        {/* Member avatars */}
+
+        {bill.paymentRequested && (
+          <div style={{ marginBottom: '12px' }}>
+            <span style={{ background: 'rgba(255,137,6,0.18)', color: '#FFB566', fontSize: '11px', padding: '4px 10px', borderRadius: '999px', fontWeight: 700 }}>
+              Pending Approval ⏳
+            </span>
+            {bill.paymentRequestedBy?.name && (
+              <p style={{ fontSize: '12px', color: '#A7A9BE', marginTop: '8px' }}>
+                Requested by {bill.paymentRequestedBy.name}
+              </p>
+            )}
+          </div>
+        )}
+
         {bill.split_among?.length > 0 && (
           <div style={{ display: 'flex', marginBottom: '12px' }}>
-            {bill.split_among.slice(0, 4).map((m, i) => (
-              <div key={m._id || i} style={{ width: '24px', height: '24px', borderRadius: '50%', background: 'linear-gradient(135deg, #6C63FF, #FF6584)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '9px', fontWeight: 700, marginLeft: i > 0 ? '-6px' : 0, border: '2px solid #1C1B29' }}>
-                {m.name?.charAt(0).toUpperCase() || '?'}
+            {bill.split_among.slice(0, 4).map((member, index) => (
+              <div key={member._id || index} style={{ width: '24px', height: '24px', borderRadius: '50%', background: 'linear-gradient(135deg, #6C63FF, #FF6584)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '9px', fontWeight: 700, marginLeft: index > 0 ? '-6px' : 0, border: '2px solid #1C1B29' }}>
+                {member.name?.charAt(0).toUpperCase() || '?'}
               </div>
             ))}
           </div>
         )}
-        {!bill.paid && canMarkPaid && (
+
+        {!bill.paid && isAdmin && !bill.paymentRequested && (
           <button
-            onClick={() => handleMarkPaid(bill._id)}
+            onClick={() => handleMarkPaid(bill)}
+            disabled={actionLoading[actionKey]}
             className="gradient-btn"
-            style={{ width: '100%', padding: '10px', borderRadius: '10px', fontSize: '13px' }}
+            style={{ width: '100%', padding: '10px', borderRadius: '10px', fontSize: '13px', opacity: actionLoading[actionKey] ? 0.7 : 1 }}
           >
-            Mark as Paid
+            {actionLoading[actionKey] ? 'Saving...' : 'Mark as Paid'}
           </button>
         )}
-        {!bill.paid && !canMarkPaid && (
+
+        {!bill.paid && !isAdmin && canRequestPayment && (
+          <button
+            onClick={() => handleMarkPaid(bill)}
+            disabled={actionLoading[actionKey]}
+            className="gradient-btn"
+            style={{ width: '100%', padding: '10px', borderRadius: '10px', fontSize: '13px', opacity: actionLoading[actionKey] ? 0.7 : 1 }}
+          >
+            {actionLoading[actionKey] ? 'Requesting...' : 'Request Payment'}
+          </button>
+        )}
+
+        {!bill.paid && !isAdmin && !bill.paymentRequested && !canRequestPayment && (
           <div style={{ width: '100%', padding: '10px', borderRadius: '10px', fontSize: '13px', textAlign: 'center', background: '#252436', color: '#A7A9BE' }}>
             Waiting for {bill.assigned_to?.name || 'assigned member'}
           </div>
@@ -163,17 +254,16 @@ export default function Bills() {
 
   return (
     <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-      {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
         <h1 style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: '24px' }}>Bills</h1>
         <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
           <select
             value={selectedGroup}
-            onChange={e => setSelectedGroup(e.target.value)}
+            onChange={(event) => setSelectedGroup(event.target.value)}
             className="input-dark"
             style={{ width: 'auto', minWidth: '140px' }}
           >
-            {groups.map(g => <option key={g._id} value={g._id}>{g.name}</option>)}
+            {groups.map((item) => <option key={item._id} value={item._id}>{item.name}</option>)}
           </select>
           <button onClick={() => setShowForm(true)} className="gradient-btn" style={{ padding: '10px 18px', borderRadius: '12px', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '6px' }}>
             <Plus size={16} /> Add Bill
@@ -181,7 +271,49 @@ export default function Bills() {
         </div>
       </div>
 
-      {/* Unpaid bills */}
+      {isAdmin && paymentRequests.length > 0 && (
+        <div className="glass" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+            <h2 style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: '18px' }}>Payment Requests ({paymentRequests.length})</h2>
+            <span style={{ fontSize: '12px', color: '#A7A9BE' }}>Admin action required</span>
+          </div>
+
+          {paymentRequests.map((bill) => {
+            const approveKey = `approve-${bill._id}`;
+            const rejectKey = `reject-${bill._id}`;
+
+            return (
+              <div key={bill._id} style={{ padding: '16px', borderRadius: '14px', background: '#252436', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+                <div>
+                  <p style={{ fontWeight: 600, fontSize: '15px', marginBottom: '4px' }}>{bill.title} • ₹{bill.amount}</p>
+                  <p style={{ fontSize: '13px', color: '#A7A9BE' }}>
+                    {bill.paymentRequestedBy?.name || 'A member'} requested payment
+                  </p>
+                </div>
+
+                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                  <button
+                    onClick={() => handleApprove(bill)}
+                    disabled={actionLoading[approveKey]}
+                    className="gradient-btn"
+                    style={{ padding: '9px 14px', borderRadius: '10px', fontSize: '13px', opacity: actionLoading[approveKey] ? 0.7 : 1 }}
+                  >
+                    {actionLoading[approveKey] ? 'Approving...' : 'Approve ✅'}
+                  </button>
+                  <button
+                    onClick={() => handleReject(bill)}
+                    disabled={actionLoading[rejectKey]}
+                    style={{ padding: '9px 14px', borderRadius: '10px', border: '1px solid rgba(255,101,132,0.35)', background: 'rgba(255,101,132,0.12)', color: '#FF6584', cursor: actionLoading[rejectKey] ? 'not-allowed' : 'pointer', fontSize: '13px', fontWeight: 600, opacity: actionLoading[rejectKey] ? 0.7 : 1 }}
+                  >
+                    {actionLoading[rejectKey] ? 'Rejecting...' : 'Reject ❌'}
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       <div>
         <h2 style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, fontSize: '16px', marginBottom: '16px', color: '#A7A9BE' }}>
           Unpaid ({unpaid.length})
@@ -193,16 +325,15 @@ export default function Bills() {
           </div>
         ) : (
           <div style={{ display: 'grid', gap: '16px', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
-            {unpaid.map(b => <BillCard key={b._id} bill={b} />)}
+            {unpaid.map((bill) => <BillCard key={bill._id} bill={bill} />)}
           </div>
         )}
       </div>
 
-      {/* Paid bills - collapsible */}
       {paid.length > 0 && (
         <div>
           <button
-            onClick={() => setShowPaid(v => !v)}
+            onClick={() => setShowPaid((value) => !value)}
             style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'transparent', border: 'none', cursor: 'pointer', color: '#A7A9BE', fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, fontSize: '16px', marginBottom: '16px', padding: 0 }}
           >
             Paid Bills ({paid.length})
@@ -210,14 +341,14 @@ export default function Bills() {
           </button>
           {showPaid && (
             <div style={{ display: 'grid', gap: '16px', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
-              {paid.map(b => <BillCard key={b._id} bill={b} dimmed />)}
+              {paid.map((bill) => <BillCard key={bill._id} bill={bill} dimmed />)}
             </div>
           )}
         </div>
       )}
 
       <Modal open={showForm} onClose={() => setShowForm(false)} title="Add Bill" hideFooter>
-        {group && <BillForm group={group} onSubmit={handleAdd} onCancel={() => setShowForm(false)} />}
+        {group && <BillForm group={group} onSubmit={handleAdd} onCancel={() => setShowForm(false)} submitting={formSubmitting} />}
       </Modal>
     </div>
   );

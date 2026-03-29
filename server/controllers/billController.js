@@ -9,15 +9,25 @@ const isMember = (group, userId) => {
   return group.members.some((member) => member.user.toString() === userId.toString());
 };
 
+const isGroupAdmin = (group, userId) => {
+  if (!group?.created_by) return false;
+  return group.created_by.toString() === userId.toString();
+};
+
+const populateBill = (query) => query
+  .populate('group_id', 'name')
+  .populate('assigned_to', 'name email avatar')
+  .populate('paid_by', 'name email avatar')
+  .populate('split_among', 'name email avatar')
+  .populate('paymentRequestedBy', 'name email avatar');
+
 export const getBills = async (req, res, next) => {
   try {
     const group = await getGroup(req.params.groupId);
     if (!isMember(group, req.user._id)) return res.status(403).json({ success: false, message: 'Not a member' });
-    const bills = await Bill.find({ group_id: req.params.groupId })
-      .populate('group_id', 'name')
-      .populate('assigned_to', 'name email avatar')
-      .populate('paid_by', 'name email avatar')
-      .populate('split_among', 'name email avatar')
+    const bills = await populateBill(
+      Bill.find({ group_id: req.params.groupId })
+    )
       .sort({ due_date: 1 });
     res.json({ success: true, data: bills });
   } catch (err) {
@@ -55,11 +65,7 @@ export const addBill = async (req, res, next) => {
       assigned_to: responsibleUserId,
       split_among: participants
     });
-    const populated = await Bill.findById(bill._id)
-      .populate('group_id', 'name')
-      .populate('assigned_to', 'name email avatar')
-      .populate('paid_by', 'name email avatar')
-      .populate('split_among', 'name email avatar');
+    const populated = await populateBill(Bill.findById(bill._id));
     emitToGroup(group_id.toString(), 'bill:added', populated);
     res.status(201).json({ success: true, data: populated });
   } catch (err) {
@@ -75,6 +81,7 @@ export const updateBill = async (req, res, next) => {
     if (!isMember(group, req.user._id)) return res.status(403).json({ success: false, message: 'Not a member' });
 
     const memberIds = new Set(group.members.map((member) => member.user.toString()));
+    const admin = isGroupAdmin(group, req.user._id);
 
     if (req.body.assigned_to !== undefined) {
       const assignedUserId = req.body.assigned_to ? req.body.assigned_to.toString() : '';
@@ -85,18 +92,32 @@ export const updateBill = async (req, res, next) => {
     }
 
     if (req.body.paid !== undefined) {
-      bill.paid = req.body.paid;
       if (req.body.paid) {
         const assignedUserId = bill.assigned_to?.toString?.() || bill.assigned_to?.toString() || '';
-        if (assignedUserId && assignedUserId !== req.user._id.toString()) {
+        if (!admin && assignedUserId && assignedUserId !== req.user._id.toString()) {
           return res.status(403).json({ success: false, message: 'Only the assigned user can mark this bill as paid' });
         }
 
-        const payerId = assignedUserId || req.user._id.toString();
-        bill.assigned_to = payerId;
-        bill.paid_by = payerId;
+        if (admin) {
+          const payerId = assignedUserId || req.user._id.toString();
+          bill.paid = true;
+          bill.assigned_to = payerId;
+          bill.paid_by = payerId;
+          bill.paymentRequested = false;
+          bill.paymentRequestedBy = null;
+          bill.paymentRequestedAt = null;
+        } else {
+          bill.paid = false;
+          bill.paymentRequested = true;
+          bill.paymentRequestedBy = req.user._id;
+          bill.paymentRequestedAt = new Date();
+        }
       } else {
+        bill.paid = false;
         bill.paid_by = undefined;
+        bill.paymentRequested = false;
+        bill.paymentRequestedBy = null;
+        bill.paymentRequestedAt = null;
       }
     } else if (req.body.paid_by !== undefined) {
       const payerId = req.body.paid_by ? req.body.paid_by.toString() : '';
@@ -111,11 +132,57 @@ export const updateBill = async (req, res, next) => {
     }
 
     await bill.save();
-    const populated = await Bill.findById(bill._id)
-      .populate('group_id', 'name')
-      .populate('assigned_to', 'name email avatar')
-      .populate('paid_by', 'name email avatar')
-      .populate('split_among', 'name email avatar');
+    const populated = await populateBill(Bill.findById(bill._id));
+    emitToGroup(bill.group_id.toString(), 'bill:updated', populated);
+    res.json({ success: true, data: populated });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const approveBillPayment = async (req, res, next) => {
+  try {
+    const bill = await Bill.findById(req.params.id);
+    if (!bill) return res.status(404).json({ success: false, message: 'Bill not found' });
+
+    const group = await getGroup(bill.group_id);
+    if (!isGroupAdmin(group, req.user._id)) {
+      return res.status(403).json({ success: false, message: 'Only admin can approve payment' });
+    }
+
+    const payerId = bill.paymentRequestedBy || bill.assigned_to || req.user._id;
+    bill.paid = true;
+    bill.paid_by = payerId;
+    bill.paymentRequested = false;
+    bill.paymentRequestedBy = null;
+    bill.paymentRequestedAt = null;
+    await bill.save();
+
+    const populated = await populateBill(Bill.findById(bill._id));
+    emitToGroup(bill.group_id.toString(), 'bill:updated', populated);
+    res.json({ success: true, data: populated });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const rejectBillPayment = async (req, res, next) => {
+  try {
+    const bill = await Bill.findById(req.params.id);
+    if (!bill) return res.status(404).json({ success: false, message: 'Bill not found' });
+
+    const group = await getGroup(bill.group_id);
+    if (!isGroupAdmin(group, req.user._id)) {
+      return res.status(403).json({ success: false, message: 'Only admin can reject payment' });
+    }
+
+    bill.paid = false;
+    bill.paymentRequested = false;
+    bill.paymentRequestedBy = null;
+    bill.paymentRequestedAt = null;
+    await bill.save();
+
+    const populated = await populateBill(Bill.findById(bill._id));
     emitToGroup(bill.group_id.toString(), 'bill:updated', populated);
     res.json({ success: true, data: populated });
   } catch (err) {

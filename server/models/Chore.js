@@ -6,7 +6,10 @@ const choreSchema = new mongoose.Schema({
   assigned_to: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   due_date: { type: Date },
   status: { type: String, enum: ['pending', 'done', 'skipped'], default: 'pending' },
-  recurrence: { type: String, enum: ['daily', 'weekly', 'none'], default: 'weekly' }
+  recurrence: { type: String, enum: ['daily', 'weekly', 'none'], default: 'weekly' },
+  completionRequested: { type: Boolean, default: false },
+  completionRequestedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  completionRequestedAt: { type: Date, default: null }
 }, { timestamps: true });
 
 export default mongoose.model('Chore', choreSchema);

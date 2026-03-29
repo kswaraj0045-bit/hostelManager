@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { CHORE_RECURRENCE } from '../../constants/index.js';
 
-export default function ChoreForm({ groups, onSubmit, onCancel }) {
+export default function ChoreForm({ groups, onSubmit, onCancel, submitting = false }) {
   const [title, setTitle] = useState('');
   const [groupId, setGroupId] = useState(groups?.[0]?._id || '');
   const [assignedTo, setAssignedTo] = useState('');
@@ -11,15 +11,19 @@ export default function ChoreForm({ groups, onSubmit, onCancel }) {
   const group = groups?.find((item) => item._id === groupId);
   const members = group?.members || [];
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    onSubmit({
-      group_id: groupId,
-      title: title.trim(),
-      assigned_to: assignedTo || undefined,
-      due_date: dueDate || undefined,
-      recurrence
-    });
+    try {
+      await onSubmit({
+        group_id: groupId,
+        title: title.trim(),
+        assigned_to: assignedTo || undefined,
+        due_date: dueDate || undefined,
+        recurrence
+      });
+    } catch {
+      return;
+    }
   };
 
   return (
@@ -94,12 +98,12 @@ export default function ChoreForm({ groups, onSubmit, onCancel }) {
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', flexWrap: 'wrap' }}>
         {onCancel && (
-          <button type="button" onClick={onCancel} className="secondary-btn-dark">
+          <button type="button" onClick={onCancel} className="secondary-btn-dark" disabled={submitting}>
             Cancel
           </button>
         )}
-        <button type="submit" className="gradient-btn" style={{ padding: '11px 20px', borderRadius: '12px', fontSize: '14px' }}>
-          Add Chore
+        <button type="submit" className="gradient-btn" disabled={submitting} style={{ padding: '11px 20px', borderRadius: '12px', fontSize: '14px', opacity: submitting ? 0.7 : 1 }}>
+          {submitting ? 'Adding...' : 'Add Chore'}
         </button>
       </div>
     </form>

@@ -1,5 +1,5 @@
 import express from 'express';
-import { getGroups, createGroup, getGroup, joinGroup, deleteGroup } from '../controllers/groupController.js';
+import { getGroups, createGroup, getGroup, joinGroup, deleteGroup, removeMember } from '../controllers/groupController.js';
 import { protect } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
@@ -9,6 +9,7 @@ router.get('/', getGroups);
 router.post('/', createGroup);
 router.get('/:id', getGroup);
 router.post('/join', joinGroup);
+router.delete('/:groupId/members/:userId', removeMember);
 router.delete('/:id', deleteGroup);
 
 export default router;

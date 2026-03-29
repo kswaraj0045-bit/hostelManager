@@ -4,7 +4,6 @@ import { Plus, ArrowRight, Copy, Trash2, CheckCircle, AlertTriangle, MessageSqua
 import ExpenseList from '../components/expenses/ExpenseList.jsx';
 import ExpenseForm from '../components/expenses/ExpenseForm.jsx';
 import SplitSummary from '../components/expenses/SplitSummary.jsx';
-import MemberList from '../components/groups/MemberList.jsx';
 import Modal from '../components/common/Modal.jsx';
 import Loader from '../components/common/Loader.jsx';
 import GroupChat from './GroupChat.jsx';
@@ -38,6 +37,7 @@ export default function GroupDetail() {
   const [showExpenseForm, setShowExpenseForm] = useState(false);
   const [activeTab, setActiveTab] = useState('Expenses');
   const [copied, setCopied] = useState(false);
+  const [removingMemberId, setRemovingMemberId] = useState('');
 
   const load = async () => {
     try {
@@ -92,7 +92,8 @@ export default function GroupDetail() {
   const userId = user?._id?.toString?.() || user?._id;
   const userMap = {};
   group?.members?.forEach(m => (userMap[m.user._id?.toString?.() || m.user._id] = m.user.name));
-  const isAdmin = group?.members?.find(m => (m.user._id?.toString?.() || m.user._id) === userId)?.role === 'admin';
+  const adminId = group?.created_by?._id?.toString?.() || group?.created_by?.toString?.() || '';
+  const isAdmin = adminId === userId;
 
   const cfg = GROUP_TYPE[group?.type] || GROUP_TYPE.other;
 
@@ -101,6 +102,27 @@ export default function GroupDetail() {
       navigator.clipboard.writeText(group.invite_code);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const handleRemoveMember = async (member) => {
+    const memberId = member?.user?._id?.toString?.() || member?.user?._id;
+    const memberName = member?.user?.name || 'this member';
+
+    if (!memberId || removingMemberId) return;
+
+    const confirmed = window.confirm(`Are you sure you want to remove ${memberName}?`);
+    if (!confirmed) return;
+
+    setRemovingMemberId(memberId);
+    try {
+      await groupService.removeGroupMember(id, memberId);
+      success('Member removed');
+      await load();
+    } catch (err) {
+      error(err.response?.data?.message || 'Failed to remove member');
+    } finally {
+      setRemovingMemberId('');
     }
   };
 
@@ -199,7 +221,51 @@ export default function GroupDetail() {
               <Copy size={14} /> {copied ? 'Copied!' : 'Copy'}
             </button>
           </div>
-          <MemberList members={group?.members} />
+          {(group?.members || []).map((member) => {
+            const memberId = member?.user?._id?.toString?.() || member?.user?._id;
+            const memberName = member?.user?.name || 'Unknown member';
+            const memberEmail = member?.user?.email || 'No email';
+            const isGroupAdminMember = memberId === adminId;
+            const canRemove = isAdmin && memberId !== userId;
+            const isRemoving = removingMemberId === memberId;
+
+            return (
+              <div key={memberId} className="glass" style={{ padding: '18px', display: 'flex', alignItems: 'center', gap: '14px', justifyContent: 'space-between', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px', minWidth: 0, flex: 1 }}>
+                  {member?.user?.avatar ? (
+                    <img
+                      src={member.user.avatar.startsWith('http') ? member.user.avatar : `${import.meta.env.VITE_API_URL}${member.user.avatar}`}
+                      alt={memberName}
+                      style={{ width: '44px', height: '44px', borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
+                    />
+                  ) : (
+                    <div style={{ width: '44px', height: '44px', borderRadius: '50%', background: 'linear-gradient(135deg, #6C63FF, #FF6584)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#FFFFFE', fontWeight: 700, fontSize: '16px', flexShrink: 0 }}>
+                      {memberName.charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <p style={{ fontWeight: 600, fontSize: '15px', marginBottom: '4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{memberName}</p>
+                    <p style={{ fontSize: '13px', color: '#A7A9BE', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{memberEmail}</p>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                  <span style={{ background: isGroupAdminMember ? 'rgba(108,99,255,0.18)' : 'rgba(255,255,255,0.06)', color: isGroupAdminMember ? '#8E86FF' : '#A7A9BE', fontSize: '12px', fontWeight: 700, padding: '5px 10px', borderRadius: '999px' }}>
+                    {isGroupAdminMember ? 'Admin' : 'Member'}
+                  </span>
+                  {canRemove && (
+                    <button
+                      onClick={() => handleRemoveMember(member)}
+                      disabled={isRemoving}
+                      style={{ padding: '8px 12px', borderRadius: '10px', border: '1px solid rgba(255,101,132,0.35)', background: 'rgba(255,101,132,0.12)', color: '#FF6584', cursor: isRemoving ? 'not-allowed' : 'pointer', fontSize: '12px', fontWeight: 700, opacity: isRemoving ? 0.7 : 1 }}
+                    >
+                      {isRemoving ? 'Removing...' : 'Remove'}
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 

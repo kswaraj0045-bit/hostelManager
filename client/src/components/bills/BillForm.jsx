@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-export default function BillForm({ group, onSubmit, onCancel }) {
+export default function BillForm({ group, onSubmit, onCancel, submitting = false }) {
   const [title, setTitle] = useState('');
   const [amount, setAmount] = useState('');
   const [dueDate, setDueDate] = useState('');
@@ -11,16 +11,20 @@ export default function BillForm({ group, onSubmit, onCancel }) {
     setAssignedTo(firstMemberId);
   }, [group]);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    onSubmit({
-      group_id: group._id,
-      title: title.trim(),
-      amount: parseFloat(amount),
-      due_date: dueDate || undefined,
-      assigned_to: assignedTo,
-      split_among: group.members?.map((m) => m.user._id) || []
-    });
+    try {
+      await onSubmit({
+        group_id: group._id,
+        title: title.trim(),
+        amount: parseFloat(amount),
+        due_date: dueDate || undefined,
+        assigned_to: assignedTo,
+        split_among: group.members?.map((m) => m.user._id) || []
+      });
+    } catch {
+      return;
+    }
   };
 
   return (
@@ -78,12 +82,12 @@ export default function BillForm({ group, onSubmit, onCancel }) {
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', flexWrap: 'wrap' }}>
         {onCancel && (
-          <button type="button" onClick={onCancel} className="secondary-btn-dark">
+          <button type="button" onClick={onCancel} className="secondary-btn-dark" disabled={submitting}>
             Cancel
           </button>
         )}
-        <button type="submit" className="gradient-btn" style={{ padding: '11px 20px', borderRadius: '12px', fontSize: '14px' }}>
-          Add Bill
+        <button type="submit" className="gradient-btn" disabled={submitting} style={{ padding: '11px 20px', borderRadius: '12px', fontSize: '14px', opacity: submitting ? 0.7 : 1 }}>
+          {submitting ? 'Adding...' : 'Add Bill'}
         </button>
       </div>
     </form>

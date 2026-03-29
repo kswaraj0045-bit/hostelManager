@@ -14,7 +14,7 @@ const navItems = [
   { path: '/mess', icon: UtensilsCrossed, label: 'Mess & Laundry' },
   { path: '/bills', icon: Zap, label: 'Bills' },
   { path: '/calendar', icon: CalendarDays, label: 'Calendar' },
-  { path: '/ai-assistant', icon: Bot, label: 'AI Assistant' },
+  { path: '/ai-assistant', icon: Bot, label: 'Chintu' },
   { path: '/profile', icon: User, label: 'Profile' },
 ]
 
